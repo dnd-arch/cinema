@@ -47,7 +47,7 @@
     background:#120405;
   }
   .cinemaFrame{
-    position:relative;
+    position:relative; z-index:1;
     width:min(100%, calc((100vh - 16px) * 1.7827));
     max-height:calc(100vh - 16px);
     line-height:0;
@@ -89,6 +89,7 @@
   .tray button:hover,.tray label:hover{ transform:translateY(-1px); filter:brightness(1.12); }
   .tray .divider{ width:1px; height:18px; background:var(--line); margin:0 2px; }
   .tray input[type=file]{ display:none; }
+  .upload-status{ color:#ffd0d0; font-size:10px; white-space:nowrap; padding:0 4px; }
 
   .chat-fab{
     position:fixed; bottom:24px; right:24px; z-index:20;
@@ -107,12 +108,12 @@
   .chat-fab .dot.show{ display:block; }
 
   .chat-panel{
-    position:fixed; top:0; right:0; height:100dvh; width:min(340px, 100vw); max-width:100vw;
-    background:rgba(35,5,8,.92); backdrop-filter:blur(18px); border-left:1px solid var(--line);
-    z-index:15; display:flex; flex-direction:column; transform:translateX(100%);
-    transition:transform .32s cubic-bezier(.22,.9,.3,1); box-shadow:-15px 0 45px rgba(0,0,0,.32);
+    position:absolute; right:clamp(8px,2vw,24px); bottom:clamp(8px,2vw,24px); width:min(260px,calc(100% - 16px)); height:min(300px,58%);
+    background:rgba(35,5,8,.94); backdrop-filter:blur(18px); border:1px solid var(--line); border-radius:14px;
+    z-index:25; display:flex; flex-direction:column; transform:scale(.94) translateY(10px); opacity:0; pointer-events:none;
+    transition:transform .22s ease,opacity .22s ease; box-shadow:0 10px 35px rgba(0,0,0,.5);
   }
-  .chat-panel.open{ transform:translateX(0); }
+  .chat-panel.open{ transform:scale(1) translateY(0); opacity:1; pointer-events:auto; }
   .chat-head{ padding:20px 14px 14px 18px; border-bottom:1px solid var(--line); font-family:'Fraunces',serif; font-style:italic; font-size:17px; display:flex; align-items:center; justify-content:space-between; }
   .chat-close{ width:32px; height:32px; display:grid; place-items:center; border:1px solid var(--line); border-radius:50%; background:rgba(229,44,53,.22); color:#fff; font-size:20px; line-height:1; cursor:pointer; }
   .chat-close:hover{ background:var(--red); }
@@ -140,7 +141,7 @@
     .tray input[type=text]{ width:clamp(80px, 30vw, 150px); min-width:0; }
     .tray button,.tray label{ padding:0 8px; min-width:32px; font-size:11px; }
     .chat-fab{ right:14px; bottom:76px; width:50px; height:50px; }
-    .chat-panel{ width:100vw; }
+    .chat-panel{ right:8px; bottom:8px; width:min(260px,calc(100% - 16px)); height:290px; }
     .chat-head{ padding-top:max(14px, env(safe-area-inset-top)); }
     .chat-foot{ padding-bottom:max(12px, env(safe-area-inset-bottom)); }
   }
@@ -203,18 +204,21 @@
 ============================================================ -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script>
 const firebaseConfig = {
   databaseURL: "https://cinema-c7ea1-default-rtdb.firebaseio.com",
-  projectId: "cinema-c7ea1"
+  projectId: "cinema-c7ea1",
+  storageBucket: "cinema-c7ea1.firebasestorage.app"
 };
 
 const ROOM = "our-cinema-room"; // fixed private room for the two of you
-let db = null, roomRef = null, connected = false;
+let db = null, roomRef = null, storage = null, connected = false;
 
 try{
   firebase.initializeApp(firebaseConfig);
   db = firebase.database();
+  storage = firebase.storage();
   roomRef = db.ref("rooms/" + ROOM);
   connected = true;
   console.info("Firebase connected: cinema-c7ea1");
@@ -302,15 +306,6 @@ function loadEmbed(embedUrl, broadcast){
   f.allow = "autoplay; fullscreen; picture-in-picture; encrypted-media";
   f.allowFullscreen = true;
   screenEl.appendChild(f);
-  const ytMatch = embedUrl.match(/(?:embed\/)([^?]+)/);
-  if(ytMatch){
-    const fallback = document.createElement("a");
-    fallback.href = "https://www.youtube.com/watch?v=" + decodeURIComponent(ytMatch[1]);
-    fallback.target = "_blank"; fallback.rel = "noopener";
-    fallback.textContent = "إذا لم يعمل الفيديو، افتحه على يوتيوب";
-    fallback.style.cssText = "position:absolute;left:10px;bottom:8px;color:#fff;background:rgba(180,0,0,.82);padding:7px 10px;border-radius:8px;font:12px Inter,sans-serif;text-decoration:none;z-index:2";
-    screenEl.appendChild(fallback);
-  }
   mediaEl = f;
   if(broadcast) pushState({type:"embed", url: embedUrl, playing:false, time:0});
 }
@@ -338,7 +333,7 @@ if(connected){
 
     applyingRemote = true;
 
-    if(s.type === "video" && s.url){
+    if((s.type === "video" || s.type === "uploaded-video") && s.url){
       if(!(mediaType === "video" && mediaEl && mediaEl.src === s.url)){
         loadVideoSrc(s.url, false);
       }
@@ -360,11 +355,34 @@ if(connected){
 }
 
 // ---------- Controls ----------
-document.getElementById("fileInput").addEventListener("change", (e)=>{
+document.getElementById("fileInput").addEventListener("change", async (e)=>{
   const file = e.target.files[0];
   if(!file) return;
-  const url = URL.createObjectURL(file);
-  loadVideoSrc(url, true);
+  if(!connected || !storage){
+    alert("يجب تفعيل Firebase Storage أولاً لرفع الفيديو للطرف الآخر.");
+    return;
+  }
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+  const ref = storage.ref("rooms/" + ROOM + "/videos/" + Date.now() + "-" + safeName);
+  const tray = document.querySelector(".tray");
+  const oldText = tray.dataset.status || "";
+  tray.dataset.status = "جاري رفع الفيديو…";
+  const status = document.createElement("span");
+  status.className = "upload-status"; status.textContent = "رفع 0%";
+  tray.appendChild(status);
+  try{
+    const task = ref.put(file, {contentType:file.type || "video/mp4"});
+    task.on("state_changed", snap=>{ status.textContent = "رفع " + Math.round(snap.bytesTransferred/snap.totalBytes*100) + "%"; }, null, async ()=>{
+      const url = await ref.getDownloadURL();
+      loadVideoSrc(url, false);
+      pushState({type:"uploaded-video", url, name:file.name, playing:false, time:0});
+      status.textContent = "تم الرفع";
+      setTimeout(()=>status.remove(), 1800);
+    });
+  }catch(err){
+    console.error(err); status.textContent = "فشل الرفع"; setTimeout(()=>status.remove(),2500);
+  }
+  e.target.value = "";
 });
 
 function handleUrlSubmit(){
