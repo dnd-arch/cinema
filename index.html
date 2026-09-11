@@ -258,7 +258,7 @@ function chooseCinemaAccount(account){
 }
 const chatPanel = document.getElementById("chatPanel");
 const cinemaFrame = document.querySelector(".cinemaFrame");
-if(chatPanel && screenEl) screenEl.appendChild(chatPanel);
+if(chatPanel) document.getElementById("screen").appendChild(chatPanel);
 const accountGate = document.getElementById("accountGate");
 if(localStorage.getItem("ourcinema_account")) accountGate.classList.add("hidden");
 let db = null, roomRef = null, connected = false;
@@ -545,9 +545,9 @@ function placeChatNearFab(fabRect){
   const panelW = Math.min(260, Math.max(220, frameRect.width - 16));
   const panelH = Math.min(300, Math.max(220, frameRect.height * .58));
   let left = fabRect.left - frameRect.left;
-  let top = fabRect.top - frameRect.top - panelH - 10;
-  if(top < 8) top = fabRect.bottom - frameRect.top + 10;
+  let top = fabRect.top - frameRect.top;
   left = Math.max(8, Math.min(Math.max(8, frameRect.width - panelW - 8), left));
+  top = Math.max(8, Math.min(Math.max(8, frameRect.height - panelH - 8), top));
   chatPanel.style.width = panelW + "px";
   chatPanel.style.height = panelH + "px";
   chatPanel.style.left = left + "px";
@@ -599,6 +599,21 @@ chatFab.addEventListener("pointerup", endFabPointer);
 chatFab.addEventListener("pointercancel", endFabPointer);
 chatFab.addEventListener("click", e=>{ if(!fabMoved) setChatOpen(true); fabMoved = false; });
 document.getElementById("chatClose").addEventListener("click", ()=>setChatOpen(false));
+let chatDragging=false, chatDragStart=null;
+const chatHead=document.querySelector("#chatPanel .chat-head");
+chatHead.addEventListener("pointerdown", e=>{
+  chatDragging=true; chatDragStart={x:e.clientX,y:e.clientY,left:chatPanel.offsetLeft,top:chatPanel.offsetTop};
+  chatHead.setPointerCapture?.(e.pointerId); e.preventDefault();
+});
+chatHead.addEventListener("pointermove", e=>{
+  if(!chatDragging) return;
+  const r=screenEl.getBoundingClientRect();
+  const left=Math.max(8,Math.min(r.width-chatPanel.offsetWidth-8,chatDragStart.left+e.clientX-chatDragStart.x));
+  const top=Math.max(8,Math.min(r.height-chatPanel.offsetHeight-8,chatDragStart.top+e.clientY-chatDragStart.y));
+  chatPanel.style.left=left+"px"; chatPanel.style.top=top+"px";
+});
+chatHead.addEventListener("pointerup",()=>{chatDragging=false;});
+chatHead.addEventListener("pointercancel",()=>{chatDragging=false;});
 
 const chatBody = document.getElementById("chatBody");
 function renderMsg(text, who, name){
