@@ -127,7 +127,7 @@
   .chat-fab .dot.show{ display:block; }
 
   .chat-panel{
-    position:absolute; right:clamp(8px,2vw,24px); bottom:clamp(8px,2vw,24px); width:min(260px,calc(100% - 16px)); height:min(300px,58%);
+    position:fixed; right:auto; bottom:auto; width:240px; height:230px;
     background:rgba(35,5,8,.94); backdrop-filter:blur(18px); border:1px solid var(--line); border-radius:14px;
     z-index:25; display:flex; flex-direction:column; transform:scale(.94) translateY(10px); opacity:0; pointer-events:none;
     transition:transform .22s ease,opacity .22s ease; box-shadow:0 10px 35px rgba(0,0,0,.5);
@@ -541,19 +541,19 @@ let fabPointer = null;
 let fabStart = {x:0, y:0, left:0, top:0};
 
 function placeChatNearFab(fabRect){
-  const frameRect = cinemaFrame.getBoundingClientRect();
-  const panelW = Math.min(260, Math.max(220, frameRect.width - 16));
-  const panelH = Math.min(300, Math.max(220, frameRect.height * .58));
-  let left = fabRect.left - frameRect.left;
-  let top = fabRect.top - frameRect.top;
-  left = Math.max(8, Math.min(Math.max(8, frameRect.width - panelW - 8), left));
-  top = Math.max(8, Math.min(Math.max(8, frameRect.height - panelH - 8), top));
-  chatPanel.style.width = panelW + "px";
-  chatPanel.style.height = panelH + "px";
-  chatPanel.style.left = left + "px";
-  chatPanel.style.top = top + "px";
-  chatPanel.style.right = "auto";
-  chatPanel.style.bottom = "auto";
+  const panelW=240, panelH=230, gap=8;
+  let left=fabRect.left;
+  let top=fabRect.top;
+  if(left+panelW > window.innerWidth-8) left=window.innerWidth-panelW-8;
+  if(top+panelH > window.innerHeight-8) top=window.innerHeight-panelH-8;
+  left=Math.max(8,left); top=Math.max(8,top);
+  chatPanel.style.position="fixed";
+  chatPanel.style.width=panelW+"px";
+  chatPanel.style.height=panelH+"px";
+  chatPanel.style.left=left+"px";
+  chatPanel.style.top=top+"px";
+  chatPanel.style.right="auto";
+  chatPanel.style.bottom="auto";
 }
 function setChatOpen(open){
   unlockSound();
