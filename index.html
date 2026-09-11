@@ -102,6 +102,13 @@
   .tray .divider{ width:1px; height:18px; background:var(--line); margin:0 2px; }
   .tray input[type=file]{ display:none; }
   .upload-status{ color:#ffd0d0; font-size:10px; white-space:nowrap; padding:0 4px; }
+  .transfer-progress{ position:fixed; left:50%; bottom:72px; transform:translateX(-50%); z-index:12; width:min(380px,calc(100vw - 24px)); padding:11px 13px; border:1px solid var(--line); border-radius:13px; background:rgba(35,5,8,.94); backdrop-filter:blur(16px); box-shadow:0 10px 35px rgba(0,0,0,.48); color:#fff; font-size:11px; }
+  .transfer-progress.hidden{ display:none; }
+  .transfer-title{ display:flex; justify-content:space-between; gap:8px; margin-bottom:7px; }
+  .transfer-bar{ height:8px; overflow:hidden; border-radius:99px; background:rgba(255,255,255,.13); }
+  .transfer-fill{ height:100%; width:0%; border-radius:inherit; background:linear-gradient(90deg,var(--red-deep),var(--red-bright)); transition:width .15s linear; }
+  .transfer-detail{ margin-top:7px; color:#f3baba; text-align:center; }
+  @media(max-width:640px){ .transfer-progress{ bottom:82px; font-size:11px; } }
   body.viewer-mode .tray label{ display:none; }
   .account-gate{ position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; background:rgba(12,2,4,.82); backdrop-filter:blur(12px); }
   .account-gate.hidden{ display:none; }
@@ -188,6 +195,11 @@
   </div>
 
   <div class="brand"><b>Our</b> Cinema</div>
+  <div class="transfer-progress hidden" id="transferProgress">
+    <div class="transfer-title"><span id="transferTitle">نقل الفيديو</span><b id="transferPercent">0%</b></div>
+    <div class="transfer-bar"><div class="transfer-fill" id="transferFill"></div></div>
+    <div class="transfer-detail" id="transferDetail">جاري التحضير…</div>
+  </div>
   <div class="presence">
     <div class="who pink" id="presPink" title="Pink"></div>
     <div class="who blue" id="presBlue" title="Blue"></div>
@@ -420,9 +432,37 @@ let iceQueue = [];
 
 function makePeer(){
   const pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
-  pc.onicecandidate = e=>{ if(e.candidate && connected) roomRef.child("webrtc/candidates/" + (CAN_UPLOAD ? "ekramo" : "amado")).push(e.candidate.toJSON()); };
-  pc.onconnectionstatechange = ()=>console.log("WebRTC:", pc.connectionState);
+  pc.onicecandidate = e=>{ if(e.candidate && connected) roomRef.child("webrtc/candidates/" + ACCOUNT_NAME).push(e.candidate.toJSON()); };
+  pc.onconnectionstatechange = ()=>{ console.log("WebRTC:", pc.connectionState); if(pc.connectionState === "failed") transferStatus("فشل الاتصال، أعد اختيار الفيديو"); };
   return pc;
+}
+function formatBytes(bytes){
+  if(!Number.isFinite(bytes) || bytes < 1024) return Math.max(0,Math.round(bytes||0))+" B";
+  const units=["KB","MB","GB"]; let n=bytes/1024, i=0;
+  while(n>=1024 && i<units.length-1){ n/=1024; i++; }
+  return n.toFixed(n>=100?0:n>=10?1:2)+" "+units[i];
+}
+function formatDuration(seconds){
+  if(!Number.isFinite(seconds) || seconds<0) return "حساب الوقت…";
+  seconds=Math.ceil(seconds); const m=Math.floor(seconds/60), s=seconds%60;
+  return m ? m+" د "+String(s).padStart(2,"0")+" ث" : s+" ث";
+}
+function updateTransferProgress(kind, done, total, startedAt){
+  const box=document.getElementById("transferProgress"), fill=document.getElementById("transferFill");
+  const percent=total ? Math.min(100,done/total*100) : 0;
+  const elapsed=Math.max(.1,(Date.now()-startedAt)/1000), speed=done/elapsed, remain=speed ? (total-done)/speed : Infinity;
+  document.getElementById("transferTitle").textContent=kind === "send" ? "إرسال الفيديو" : "استقبال الفيديو";
+  document.getElementById("transferPercent").textContent=Math.round(percent)+"%";
+  fill.style.width=percent+"%";
+  document.getElementById("transferDetail").textContent=formatBytes(done)+" / "+formatBytes(total)+" • "+formatBytes(speed)+"/ث • المتبقي "+formatDuration(remain);
+  box.classList.remove("hidden");
+}
+function finishTransferProgress(text){
+  document.getElementById("transferTitle").textContent=text;
+  document.getElementById("transferPercent").textContent="100%";
+  document.getElementById("transferFill").style.width="100%";
+  document.getElementById("transferDetail").textContent="اكتمل النقل";
+  setTimeout(()=>document.getElementById("transferProgress").classList.add("hidden"),2200);
 }
 function transferStatus(text){
   let el=document.querySelector(".upload-status");
@@ -438,17 +478,24 @@ function sendVideoFile(file){
   transferChannel.bufferedAmountLowThreshold=1024*1024;
   transferChannel.onopen=async ()=>{
     transferChannel.send(JSON.stringify({kind:"meta",name:file.name,size:file.size,type:file.type||"video/mp4"}));
-    const chunk=64*1024; let offset=0; const status=transferStatus("إرسال 0%");
+    const chunk=64*1024; let offset=0; const startedAt=Date.now(); const status=transferStatus("إرسال 0%");
+    updateTransferProgress("send",0,file.size,startedAt);
     while(offset<file.size){
       if(transferChannel.bufferedAmount>8*1024*1024) await new Promise(r=>{ transferChannel.onbufferedamountlow=r; });
       const buf=await file.slice(offset,offset+chunk).arrayBuffer();
       transferChannel.send(buf); offset+=buf.byteLength;
       status.textContent="إرسال "+Math.round(offset/file.size*100)+"%";
+      updateTransferProgress("send",offset,file.size,startedAt);
     }
     transferChannel.send(JSON.stringify({kind:"done"}));
-    status.textContent="تم النقل"; setTimeout(()=>status.remove(),1800);
+    status.textContent="تم النقل"; finishTransferProgress("تم إرسال الفيديو"); setTimeout(()=>status.remove(),1800);
   };
-  peer.createOffer().then(o=>peer.setLocalDescription(o)).then(()=>roomRef.child("webrtc/offer").set({from:ACCOUNT_NAME,sdp:peer.localDescription.toJSON()}));
+  roomRef.child("webrtc/candidates/" + ACCOUNT_NAME).remove()
+    .then(()=>roomRef.child("webrtc/answer").remove())
+    .then(()=>peer.createOffer())
+    .then(o=>peer.setLocalDescription(o))
+    .then(()=>roomRef.child("webrtc/offer").set({from:ACCOUNT_NAME,sdp:peer.localDescription.toJSON(),at:Date.now()}))
+    .catch(err=>{ console.error("WebRTC offer failed",err); transferStatus("فشل بدء الإرسال"); });
 }
 function prepareReceiver(){
   if(CAN_UPLOAD || !connected) return;
@@ -459,15 +506,16 @@ function prepareReceiver(){
     transferChannel.onmessage=ev=>{
       if(typeof ev.data === "string"){
         const msg=JSON.parse(ev.data);
-        if(msg.kind==="meta"){ receiveMeta=msg; receiveParts=[]; receiveBytes=0; transferStatus("استقبال 0%"); }
+        if(msg.kind==="meta"){ receiveMeta=msg; receiveParts=[]; receiveBytes=0; receiveMeta.startedAt=Date.now(); transferStatus("استقبال 0%"); updateTransferProgress("receive",0,msg.size,receiveMeta.startedAt); }
         if(msg.kind==="done"){
           const blob=new Blob(receiveParts,{type:receiveMeta.type||"video/mp4"});
           const url=URL.createObjectURL(blob); loadVideoSrc(url,false); pushState({type:"video",url:"",playing:false,time:0});
-          const status=document.querySelector(".upload-status"); if(status){status.textContent="تم الاستقبال";setTimeout(()=>status.remove(),1800);}
+          finishTransferProgress("تم استقبال الفيديو"); const status=document.querySelector(".upload-status"); if(status){status.textContent="تم الاستقبال";setTimeout(()=>status.remove(),1800);}
         }
       } else if(receiveMeta){
         receiveParts.push(ev.data); receiveBytes+=ev.data.byteLength;
         const status=transferStatus("استقبال "+Math.round(receiveBytes/receiveMeta.size*100)+"%");
+        updateTransferProgress("receive",receiveBytes,receiveMeta.size,receiveMeta.startedAt);
       }
     };
   };
@@ -483,7 +531,7 @@ if(connected){
     await roomRef.child("webrtc/answer").set({from:ACCOUNT_NAME,sdp:peer.localDescription.toJSON()});
   });
   roomRef.child("webrtc/answer").on("value",async snap=>{
-    const answer=snap.val(); if(!CAN_UPLOAD || !answer || !peer || answer.from===ACCOUNT_NAME || peer.currentRemoteDescription) return;
+    const answer=snap.val(); if(!CAN_UPLOAD || !answer || !peer || answer.from===ACCOUNT_NAME || peer.currentRemoteDescription || peer.signalingState !== "have-local-offer") return;
     await peer.setRemoteDescription(new RTCSessionDescription(answer.sdp));
     for(const c of iceQueue.splice(0)) try{ await peer.addIceCandidate(new RTCIceCandidate(c)); }catch(e){}
   });
