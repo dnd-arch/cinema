@@ -66,7 +66,7 @@
   }
   .screen.empty{ display:flex; align-items:center; justify-content:center; background:radial-gradient(ellipse at center,#241012 0%,#050203 100%); }
   .screen:fullscreen{ width:100vw; height:100vh; left:0; top:0; background:#000; }
-  .screen:fullscreen .chat-panel{ position:absolute; right:18px; bottom:18px; }
+  .screen:fullscreen .chat-panel{ position:fixed !important; right:auto !important; bottom:auto !important; }
   .screen:fullscreen .fullscreen-btn{ top:18px; }
   .fullscreen-btn{ position:absolute; right:10px; top:10px; z-index:30; border:1px solid rgba(255,255,255,.35); border-radius:8px; background:rgba(90,0,10,.82); color:#fff; padding:7px 9px; cursor:pointer; font-size:14px; }
   video{ max-width:100%; }
@@ -319,6 +319,10 @@ function showEmpty(){
 function toEmbedUrl(url){
   try{
     const u = new URL(url);
+    if(u.hostname === "t.me" || u.hostname === "telegram.me"){
+      const parts=u.pathname.split("/").filter(Boolean);
+      if(parts.length >= 2 && /^\d+$/.test(parts[1])) return "https://t.me/"+parts[0]+"/"+parts[1]+"?embed=1";
+    }
     if(u.hostname.includes("youtube.com") || u.hostname === "youtu.be"){
       let id = u.searchParams.get("v");
       if(u.hostname === "youtu.be") id = u.pathname.slice(1);
@@ -333,7 +337,7 @@ function toEmbedUrl(url){
 }
 
 function isDirectVideo(url){
-  return /\.(mp4|webm|mkv|mov|m4v)(\?.*)?$/i.test(url);
+  return /\.(mp4|webm|mkv|mov|m4v)(?:[?#].*)?$/i.test(url) || /(^|[?&])(video|download)=/i.test(url);
 }
 
 function loadVideoSrc(src, broadcast){
@@ -602,18 +606,19 @@ document.getElementById("chatClose").addEventListener("click", ()=>setChatOpen(f
 let chatDragging=false, chatDragStart=null;
 const chatHead=document.querySelector("#chatPanel .chat-head");
 chatHead.addEventListener("pointerdown", e=>{
+  if(e.target.closest("#chatClose")) return;
   chatDragging=true; chatDragStart={x:e.clientX,y:e.clientY,left:chatPanel.offsetLeft,top:chatPanel.offsetTop};
   chatHead.setPointerCapture?.(e.pointerId); e.preventDefault();
 });
 chatHead.addEventListener("pointermove", e=>{
   if(!chatDragging) return;
-  const r=screenEl.getBoundingClientRect();
-  const left=Math.max(8,Math.min(r.width-chatPanel.offsetWidth-8,chatDragStart.left+e.clientX-chatDragStart.x));
-  const top=Math.max(8,Math.min(r.height-chatPanel.offsetHeight-8,chatDragStart.top+e.clientY-chatDragStart.y));
+  const left=Math.max(8,Math.min(window.innerWidth-chatPanel.offsetWidth-8,chatDragStart.left+e.clientX-chatDragStart.x));
+  const top=Math.max(8,Math.min(window.innerHeight-chatPanel.offsetHeight-8,chatDragStart.top+e.clientY-chatDragStart.y));
   chatPanel.style.left=left+"px"; chatPanel.style.top=top+"px";
 });
 chatHead.addEventListener("pointerup",()=>{chatDragging=false;});
 chatHead.addEventListener("pointercancel",()=>{chatDragging=false;});
+document.addEventListener("pointerup",()=>{chatDragging=false;});
 
 const chatBody = document.getElementById("chatBody");
 function renderMsg(text, who, name){
