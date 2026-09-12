@@ -301,7 +301,9 @@ function chooseCinemaAccount(account){
 }
 const chatPanel = document.getElementById("chatPanel");
 const cinemaFrame = document.querySelector(".cinemaFrame");
-if(chatPanel) document.getElementById("screen").appendChild(chatPanel);
+const cinemaScreen = document.getElementById("screen");
+if(chatPanel) document.body.appendChild(chatPanel);
+document.addEventListener("fullscreenchange",()=>{ if(!chatPanel) return; if(document.fullscreenElement === cinemaScreen) cinemaScreen.appendChild(chatPanel); else document.body.appendChild(chatPanel); });
 const accountGate = document.getElementById("accountGate");
 if(localStorage.getItem("ourcinema_account")) accountGate.classList.add("hidden");
 let db = null, roomRef = null, connected = false;
