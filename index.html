@@ -154,14 +154,21 @@
     transition:transform .22s ease,opacity .22s ease; box-shadow:0 10px 35px rgba(0,0,0,.5);
   }
   .chat-panel.open{ transform:scale(1) translateY(0); opacity:1; pointer-events:auto; }
-  .chat-head{ padding:20px 14px 14px 18px; border-bottom:1px solid var(--line); font-family:'Fraunces',serif; font-style:italic; font-size:17px; display:flex; align-items:center; justify-content:space-between; }
+  .chat-head{ padding:12px 14px 10px 18px; border-bottom:1px solid var(--line); font-family:'Fraunces',serif; font-style:italic; font-size:17px; display:flex; align-items:center; justify-content:space-between; }
+  .chat-head-info{ display:flex; flex-direction:column; gap:2px; }
+  .chat-status{ font-family:'Inter',sans-serif; font-style:normal; font-size:10px; color:#f4b6b6; }
+  .chat-head-actions{ display:flex; align-items:center; gap:5px; }
+  .chat-tool{ border:0; background:transparent; color:#ffdede; cursor:pointer; font-size:15px; padding:4px; }
+  .chat-tool:hover{ color:#fff; }
+  .msg-status{ display:block; margin-top:4px; font-size:9px; opacity:.78; text-align:right; }
+  .msg-status.read{ color:#ffd1d1; }
   .chat-close{ width:32px; height:32px; display:grid; place-items:center; border:1px solid var(--line); border-radius:50%; background:rgba(229,44,53,.22); color:#fff; font-size:20px; line-height:1; cursor:pointer; }
   .chat-close:hover{ background:var(--red); }
   .chat-body{ flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
   .msg{ max-width:80%; padding:8px 12px; border-radius:14px; font-size:13.5px; line-height:1.45; word-wrap:break-word; }
   .msg-name{ display:block; margin-bottom:3px; font-size:10px; font-weight:600; opacity:.82; }
-  .msg.mine{ align-self:flex-end; background:linear-gradient(145deg,var(--red-bright),var(--red-deep)); color:#fff; border-bottom-right-radius:4px; }
-  .msg.theirs{ align-self:flex-start; background:var(--panel-2); border:1px solid var(--line); border-bottom-left-radius:4px; }
+  .msg.amado{ align-self:flex-end; background:linear-gradient(145deg,#e52c35,#8f0b14); color:#fff; border-bottom-right-radius:4px; border:1px solid rgba(255,150,150,.35); }
+  .msg.ekramo{ align-self:flex-start; background:linear-gradient(145deg,#40202b,#24121a); color:#ffe8e8; border:1px solid rgba(255,190,190,.28); border-bottom-left-radius:4px; }
   .chat-foot{ padding:12px; border-top:1px solid var(--line); display:flex; gap:8px; }
   .chat-foot input{ flex:1; background:rgba(0,0,0,.2); border:1px solid var(--line); color:var(--text); padding:10px 12px; border-radius:10px; font-family:'Inter',sans-serif; font-size:13.5px; outline:0; }
   .chat-foot input:focus{ border-color:rgba(255,120,120,.7); }
@@ -232,11 +239,6 @@
   </div>
 
   <div class="tray">
-    <label title="Upload a video">
-      <span>⏏</span><span>تحميل</span>
-      <input type="file" id="fileInput" accept="video/mp4,video/webm,video/x-matroska,video/*">
-    </label>
-    <div class="divider"></div>
     <input type="text" id="urlInput" placeholder="ضع رابط الفيديو…">
     <button id="loadUrlBtn" title="Load link">رابط ➜</button>
   </div>
@@ -249,12 +251,13 @@
   </div>
 
   <div class="chat-panel" id="chatPanel">
-    <div class="chat-head"><span></span><button class="chat-close" id="chatClose" aria-label="Close chat">×</button></div>
+    <div class="chat-head"><div class="chat-head-info"><span>Our Chat</span><span class="chat-status" id="chatStatus">جاري الاتصال…</span></div><div class="chat-head-actions"><button class="chat-tool" id="muteChatBtn" title="كتم الرنة">🔔</button><button class="chat-tool" id="clearChatBtn" title="مسح المحادثة">🗑</button><button class="chat-close" id="chatClose" aria-label="Close chat">×</button></div></div>
     <div class="chat-body" id="chatBody"></div>
     <div class="typing-indicator" id="typingIndicator"></div>
     <div class="reply-bar" id="replyBar"><span id="replyText"></span><button class="reply-cancel" id="replyCancel" type="button">×</button></div>
     <div class="chat-foot">
-      <input type="text" id="chatInput" placeholder="Say something…">
+      <button id="emojiBtn" type="button" title="إيموجي">☺</button>
+      <input type="text" id="chatInput" placeholder="اكتب رسالة…">
       <button id="chatSend">➜</button>
     </div>
   </div>
@@ -314,14 +317,18 @@ const sessionId = me + "-" + Math.random().toString(36).slice(2,8);
 
 // ---------- Presence ----------
 if(connected){
-  const presRef = roomRef.child("presence/" + me);
-  presRef.onDisconnect().remove();
-  presRef.set(true);
+  const presRef = roomRef.child("presence/" + ACCOUNT_NAME);
+  presRef.onDisconnect().set({online:false,lastSeen:firebase.database.ServerValue.TIMESTAMP});
+  presRef.set({online:true,lastSeen:firebase.database.ServerValue.TIMESTAMP});
   roomRef.child("presence").on("value", snap=>{
-    const v = snap.val() || {};
-    document.getElementById("presPink").classList.toggle("on", !!v.pink);
-    document.getElementById("presBlue").classList.toggle("on", !!v.blue);
+    const v=snap.val()||{}, other=ACCOUNT_NAME==="amado"?"ekramo":"amado", mine=v[ACCOUNT_NAME], theirs=v[other];
+    document.getElementById("presPink").classList.toggle("on",!!v.amado?.online);
+    document.getElementById("presBlue").classList.toggle("on",!!v.ekramo?.online);
+    const status=document.getElementById("chatStatus");
+    if(!theirs?.online && theirs?.lastSeen) status.textContent="غير متصل • آخر ظهور "+new Date(theirs.lastSeen).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+    else status.textContent=theirs?.online?"متصل الآن":"جاري الاتصال…";
   });
+  db.ref(".info/connected").on("value",snap=>{ const st=document.getElementById("chatStatus"); if(!snap.val() && st) st.textContent="غير متصل"; });
 }
 
 // ---------- Player state ----------
@@ -557,15 +564,6 @@ if(connected){
   });
 }
 
-document.getElementById("fileInput").addEventListener("change", e=>{
-  const file=e.target.files[0];
-  if(file){
-    const localUrl=URL.createObjectURL(file);
-    loadVideoSrc(localUrl,false);
-    if(CAN_UPLOAD) sendVideoFile(file);
-  }
-  e.target.value="";
-});
 
 function handleUrlSubmit(){
   const input = document.getElementById("urlInput");
@@ -596,11 +594,14 @@ const fullscreenChatBtn=document.getElementById("fullscreenChatBtn");
 fullscreenChatBtn.addEventListener("click",()=>setChatOpen(!chatOpen));
 let audioCtx=null;
 function unlockSound(){ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==='suspended') audioCtx.resume(); }
+let soundMuted=localStorage.getItem("ourcinema_mute") === "1";
 function playMessageTone(){
-  unlockSound(); if(!audioCtx) return;
-  const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=740;
-  g.gain.setValueAtTime(.0001,audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(.12,audioCtx.currentTime+.02); g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+.98);
-  o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+1.02);
+  if(soundMuted) return;
+  try{ unlockSound(); if(!audioCtx) return;
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type="sine"; o.frequency.setValueAtTime(740,audioCtx.currentTime);
+    g.gain.setValueAtTime(.0001,audioCtx.currentTime); g.gain.linearRampToValueAtTime(.14,audioCtx.currentTime+.03); g.gain.linearRampToValueAtTime(.0001,audioCtx.currentTime+.96);
+    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+1.01);
+  }catch(e){ console.warn("notification sound blocked",e); }
 }
 document.addEventListener('pointerdown',unlockSound,{once:true});
 
@@ -691,49 +692,34 @@ chatHead.addEventListener("pointerup",()=>{chatDragging=false;});
 chatHead.addEventListener("pointercancel",()=>{chatDragging=false;});
 document.addEventListener("pointerup",()=>{chatDragging=false;});
 
-const chatBody = document.getElementById("chatBody");
-const unreadCountEl=document.getElementById("unreadCount");
-const typingIndicator=document.getElementById("typingIndicator");
-const replyBar=document.getElementById("replyBar");
-const replyTextEl=document.getElementById("replyText");
+const chatBody=document.getElementById("chatBody"), unreadCountEl=document.getElementById("unreadCount"), typingIndicator=document.getElementById("typingIndicator"), replyBar=document.getElementById("replyBar"), replyTextEl=document.getElementById("replyText"), chatStatusEl=document.getElementById("chatStatus");
 let unreadCount=0, replyTo=null, typingTimer=null;
-function accountLabel(){ return ACCOUNT_NAME === "amado" ? "عمادو" : "إكرامو"; }
-function setUnread(value){ unreadCount=value; unreadCountEl.textContent=value>99?"99+":String(value); unreadCountEl.classList.toggle("show",value>0); chatDot.classList.toggle("show",value>0); }
-function chooseReply(message){ replyTo={id:message.id||"",name:message.name||"",text:message.text||""}; replyTextEl.textContent="رد على "+replyTo.name+": "+replyTo.text; replyBar.classList.add("show"); document.getElementById("chatInput").focus(); }
-function renderMsg(text, who, name, reply){
-  const d=document.createElement("div"); d.className="msg "+(who===me?"mine":"theirs");
-  if(reply && reply.text){ const q=document.createElement("span"); q.className="msg-reply"; q.innerHTML="<b>"+String(reply.name||"").replace(/[<>]/g,"")+" كتب:</b>"; const qt=document.createElement("span"); qt.textContent=reply.text; q.appendChild(qt); d.appendChild(q); }
-  const label=document.createElement("span"); label.className="msg-name"; label.textContent=name||accountLabel(); d.appendChild(label);
-  const content=document.createElement("span"); content.textContent=text; d.appendChild(content);
-  d.addEventListener("click",()=>chooseReply({id:"",name:name||accountLabel(),text}));
-  chatBody.appendChild(d); chatBody.scrollTop=chatBody.scrollHeight;
+function accountLabel(){return ACCOUNT_NAME==="amado"?"عمادو":"إكرامو";}
+function setUnread(v){unreadCount=v; unreadCountEl.textContent=v>99?"99+":String(v); unreadCountEl.classList.toggle("show",v>0); chatDot.classList.toggle("show",v>0);}
+function chooseReply(m){replyTo={name:m.name||"",text:m.text||""}; replyTextEl.textContent="رد على "+replyTo.name+": "+replyTo.text; replyBar.classList.add("show"); document.getElementById("chatInput").focus();}
+function renderMsg(text,who,name,reply,key,status){
+  const d=document.createElement("div"), isAmado=name==="عمادو"||who==="amado"||(who===me&&ACCOUNT_NAME==="amado"); d.className="msg "+(isAmado?"amado":"ekramo"); d.dataset.key=key||"";
+  if(reply?.text){const q=document.createElement("span");q.className="msg-reply";q.textContent="رد على "+(reply.name||"")+": "+reply.text;d.appendChild(q);}
+  const label=document.createElement("span");label.className="msg-name";label.textContent=name||accountLabel();d.appendChild(label);
+  const content=document.createElement("span");content.textContent=text;d.appendChild(content);
+  if(who===me){const st=document.createElement("span");st.className="msg-status";st.dataset.status="1";st.textContent=status||"✓ تم الإرسال";d.appendChild(st);}
+  d.addEventListener("click",()=>chooseReply({name:name||accountLabel(),text}));chatBody.appendChild(d);chatBody.scrollTop=chatBody.scrollHeight;
 }
-function updateTyping(){
-  if(!connected) return;
-  roomRef.child("typing/"+ACCOUNT_NAME).set(true);
-  clearTimeout(typingTimer); typingTimer=setTimeout(()=>roomRef.child("typing/"+ACCOUNT_NAME).remove(),1200);
-}
-function cancelReply(){ replyTo=null; replyBar.classList.remove("show"); replyTextEl.textContent=""; }
+function markStatus(key,text){const el=chatBody.querySelector('[data-key="'+key+'"] .msg-status');if(el){el.textContent=text;el.classList.toggle("read",text.includes("قرأت"));}}
+function updateTyping(){if(!connected)return;roomRef.child("typing/"+ACCOUNT_NAME).set(true);clearTimeout(typingTimer);typingTimer=setTimeout(()=>roomRef.child("typing/"+ACCOUNT_NAME).remove(),1200);}
+function cancelReply(){replyTo=null;replyBar.classList.remove("show");replyTextEl.textContent="";}
 document.getElementById("replyCancel").addEventListener("click",cancelReply);
+document.getElementById("muteChatBtn").addEventListener("click",()=>{soundMuted=!soundMuted;localStorage.setItem("ourcinema_mute",soundMuted?"1":"0");document.getElementById("muteChatBtn").textContent=soundMuted?"🔕":"🔔";});
+document.getElementById("muteChatBtn").textContent=soundMuted?"🔕":"🔔";
+document.getElementById("emojiBtn").addEventListener("click",()=>{const input=document.getElementById("chatInput");input.value+="😊";input.focus();updateTyping();});
+document.getElementById("clearChatBtn").addEventListener("click",()=>{if(confirm("هل تريد مسح كل رسائل المحادثة؟")){if(connected)roomRef.child("chat").remove();chatBody.innerHTML="";setUnread(0);}});
 if(connected){
-  roomRef.child("chat").limitToLast(100).on("child_added",snap=>{
-    const m=snap.val(); if(!m) return; renderMsg(m.text,m.who,m.name,m.reply);
-    if(m.who!==me){ if(!chatOpen) setUnread(unreadCount+1); playMessageTone(); }
-  });
-  roomRef.child("typing").on("value",snap=>{
-    const t=snap.val()||{}; const other=t[ACCOUNT_NAME==="amado"?"ekramo":"amado"];
-    typingIndicator.innerHTML=other ? "<span class='typing-dots'>•••</span> يكتب الآن" : "";
-  });
+  roomRef.child("chat").limitToLast(100).on("child_added",snap=>{const m=snap.val();if(!m)return;const key=snap.key;renderMsg(m.text,m.who,m.name,m.reply,key,m.status);if(m.who!==me){roomRef.child("chat/"+key+"/deliveredTo/"+ACCOUNT_NAME).set(true);if(!chatOpen)setUnread(unreadCount+1);playMessageTone();}else if(m.deliveredTo?.[ACCOUNT_NAME])markStatus(key,"✓✓ تم الوصول");if(chatOpen&&m.who!==me)roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);});
+  roomRef.child("chat").on("child_changed",snap=>{const m=snap.val()||{}, other=ACCOUNT_NAME==="amado"?"ekramo":"amado";if(m.readBy?.[other])markStatus(snap.key,"✓✓ تمت القراءة");else if(m.deliveredTo?.[other])markStatus(snap.key,"✓✓ تم الوصول");});
+  roomRef.child("typing").on("value",snap=>{const t=snap.val()||{},other=t[ACCOUNT_NAME==="amado"?"ekramo":"amado"];typingIndicator.innerHTML=other?"<span class='typing-dots'>•••</span> يكتب الآن":"";});
 }
-function sendChat(){
-  const input=document.getElementById("chatInput"), text=input.value.trim(); if(!text) return;
-  const payload={text,who:me,name:accountLabel(),at:Date.now()}; if(replyTo) payload.reply={name:replyTo.name,text:replyTo.text};
-  if(connected) roomRef.child("chat").push(payload); else renderMsg(text,me,accountLabel(),payload.reply);
-  input.value=""; cancelReply(); if(connected) roomRef.child("typing/"+ACCOUNT_NAME).remove();
-}
-document.getElementById("chatSend").addEventListener("click",sendChat);
-document.getElementById("chatInput").addEventListener("input",updateTyping);
-document.getElementById("chatInput").addEventListener("keydown",e=>{ if(e.key==="Enter") sendChat(); });
+function sendChat(){const input=document.getElementById("chatInput"),text=input.value.trim();if(!text)return;const payload={text,who:me,name:accountLabel(),at:Date.now(),status:"sent"};if(replyTo)payload.reply={name:replyTo.name,text:replyTo.text};if(connected)roomRef.child("chat").push(payload);else renderMsg(text,me,accountLabel(),payload.reply,"local","✓ تم الإرسال");input.value="";cancelReply();if(connected)roomRef.child("typing/"+ACCOUNT_NAME).remove();}
+document.getElementById("chatSend").addEventListener("click",sendChat);document.getElementById("chatInput").addEventListener("input",updateTyping);document.getElementById("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter")sendChat();});
 
 </script>
 </body>
