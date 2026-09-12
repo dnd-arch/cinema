@@ -160,7 +160,12 @@
   .chat-head-actions{ display:flex; align-items:center; gap:5px; }
   .chat-tool{ border:0; background:transparent; color:#ffdede; cursor:pointer; font-size:15px; padding:4px; }
   .chat-tool:hover{ color:#fff; }
+  .emoji-picker{ display:none; position:absolute; bottom:58px; right:10px; width:190px; padding:9px; grid-template-columns:repeat(6,1fr); gap:5px; background:rgba(35,5,8,.98); border:1px solid var(--line); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.5); }
+  .emoji-picker.open{ display:grid; }
+  .emoji-choice{ border:0; background:rgba(255,255,255,.06); color:#fff; border-radius:7px; padding:6px 2px; font-size:20px; cursor:pointer; }
+  .emoji-choice:hover{ background:rgba(229,44,53,.45); }
   .msg-status{ display:block; margin-top:4px; font-size:9px; opacity:.78; text-align:right; }
+  .msg-time{ display:block; margin-top:3px; font-size:9px; opacity:.6; text-align:right; }
   .msg-status.read{ color:#ffd1d1; }
   .chat-close{ width:32px; height:32px; display:grid; place-items:center; border:1px solid var(--line); border-radius:50%; background:rgba(229,44,53,.22); color:#fff; font-size:20px; line-height:1; cursor:pointer; }
   .chat-close:hover{ background:var(--red); }
@@ -174,8 +179,10 @@
   .chat-foot input:focus{ border-color:rgba(255,120,120,.7); }
   .chat-foot button{ background:var(--red); border:1px solid rgba(255,150,150,.3); color:#fff; width:38px; border-radius:10px; cursor:pointer; }
 
-  .presence{ position:fixed; top:18px; right:22px; z-index:5; display:flex; gap:6px; align-items:center; }
-  .presence .who{ width:8px; height:8px; border-radius:50%; opacity:.35; }
+  .presence{ position:fixed; top:15px; right:22px; z-index:10; display:flex; gap:12px; align-items:center; direction:rtl; }
+  .presence-user{ display:flex; align-items:center; gap:5px; color:#eab4b4; font-size:11px; white-space:nowrap; }
+  .presence .who{ width:10px; height:10px; border-radius:50%; opacity:.35; background:#777; transition:.2s ease; }
+  .presence .who.on{ opacity:1; box-shadow:0 0 9px currentColor; }
   .presence .who.on{ opacity:1; box-shadow:0 0 8px currentColor; }
   .presence .pink{ background:var(--red-bright); color:var(--red-bright); }
   .presence .blue{ background:#ffaaa8; color:#ffaaa8; }
@@ -219,8 +226,8 @@
     <div class="transfer-detail" id="transferDetail">جاري التحضير…</div>
   </div>
   <div class="presence">
-    <div class="who pink" id="presPink" title="Pink"></div>
-    <div class="who blue" id="presBlue" title="Blue"></div>
+    <span class="presence-user"><span class="who pink" id="presPink"></span>عمادو</span>
+    <span class="presence-user"><span class="who blue" id="presBlue"></span>إكرامو</span>
   </div>
 
   <div class="stage">
@@ -251,6 +258,7 @@
   </div>
 
   <div class="chat-panel" id="chatPanel">
+    <div class="emoji-picker" id="emojiPicker">😊😂😍😘😢😡👍👏❤️🔥🎉🙏😎🤍💔🤣😉🤩😴🙌✨💯👀✅❌</div>
     <div class="chat-head"><div class="chat-head-info"><span>Our Chat</span><span class="chat-status" id="chatStatus">جاري الاتصال…</span></div><div class="chat-head-actions"><button class="chat-tool" id="muteChatBtn" title="كتم الرنة">🔔</button><button class="chat-tool" id="clearChatBtn" title="مسح المحادثة">🗑</button><button class="chat-close" id="chatClose" aria-label="Close chat">×</button></div></div>
     <div class="chat-body" id="chatBody"></div>
     <div class="typing-indicator" id="typingIndicator"></div>
@@ -701,7 +709,11 @@ function renderMsg(text,who,name,reply,key,status){
   const d=document.createElement("div"), isAmado=name==="عمادو"||who==="amado"||(who===me&&ACCOUNT_NAME==="amado"); d.className="msg "+(isAmado?"amado":"ekramo"); d.dataset.key=key||"";
   if(reply?.text){const q=document.createElement("span");q.className="msg-reply";q.textContent="رد على "+(reply.name||"")+": "+reply.text;d.appendChild(q);}
   const label=document.createElement("span");label.className="msg-name";label.textContent=name||accountLabel();d.appendChild(label);
-  const content=document.createElement("span");content.textContent=text;d.appendChild(content);
+  const content=document.createElement("span");
+  const parts=String(text||"").split(/(https?:\/\/[^\s]+)/g);
+  parts.forEach(part=>{if(/^https?:\/\//i.test(part)){const a=document.createElement("a");a.href=part;a.target="_blank";a.rel="noopener noreferrer";a.textContent=part;a.style.color="#ffd1d1";content.appendChild(a);}else content.appendChild(document.createTextNode(part));});
+  d.appendChild(content);
+  const time=document.createElement("small");time.className="msg-time";time.textContent=new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});d.appendChild(time);
   if(who===me){const st=document.createElement("span");st.className="msg-status";st.dataset.status="1";st.textContent=status||"✓ تم الإرسال";d.appendChild(st);}
   d.addEventListener("click",()=>chooseReply({name:name||accountLabel(),text}));chatBody.appendChild(d);chatBody.scrollTop=chatBody.scrollHeight;
 }
@@ -711,15 +723,21 @@ function cancelReply(){replyTo=null;replyBar.classList.remove("show");replyTextE
 document.getElementById("replyCancel").addEventListener("click",cancelReply);
 document.getElementById("muteChatBtn").addEventListener("click",()=>{soundMuted=!soundMuted;localStorage.setItem("ourcinema_mute",soundMuted?"1":"0");document.getElementById("muteChatBtn").textContent=soundMuted?"🔕":"🔔";});
 document.getElementById("muteChatBtn").textContent=soundMuted?"🔕":"🔔";
-document.getElementById("emojiBtn").addEventListener("click",()=>{const input=document.getElementById("chatInput");input.value+="😊";input.focus();updateTyping();});
-document.getElementById("clearChatBtn").addEventListener("click",()=>{if(confirm("هل تريد مسح كل رسائل المحادثة؟")){if(connected)roomRef.child("chat").remove();chatBody.innerHTML="";setUnread(0);}});
+const emojiPicker=document.getElementById("emojiPicker");
+[...emojiPicker.textContent].forEach(ch=>{});
+const emojiChars=["😊","😂","😍","😘","😢","😡","👍","👏","❤️","🔥","🎉","🙏","😎","🤍","💔","🤣","😉","🤩","😴","🙌","✨","💯","👀","✅","❌"];
+emojiPicker.textContent="";
+emojiChars.forEach(ch=>{const b=document.createElement("button");b.type="button";b.className="emoji-choice";b.textContent=ch;b.addEventListener("click",()=>{const input=document.getElementById("chatInput");input.value+=ch;input.focus();emojiPicker.classList.remove("open");updateTyping();});emojiPicker.appendChild(b);});
+document.getElementById("emojiBtn").addEventListener("click",e=>{e.stopPropagation();emojiPicker.classList.toggle("open");});
+document.addEventListener("click",e=>{if(!emojiPicker.contains(e.target)&&e.target.id!=="emojiBtn")emojiPicker.classList.remove("open");});
+document.getElementById("clearChatBtn").addEventListener("click",()=>{if(window.confirm("هل تريد مسح كل رسائل المحادثة؟")){if(connected)roomRef.child("chat").remove().catch(err=>alert("تعذر المسح: "+err.message));chatBody.replaceChildren();setUnread(0);}});
 if(connected){
   roomRef.child("chat").limitToLast(100).on("child_added",snap=>{const m=snap.val();if(!m)return;const key=snap.key;renderMsg(m.text,m.who,m.name,m.reply,key,m.status);if(m.who!==me){roomRef.child("chat/"+key+"/deliveredTo/"+ACCOUNT_NAME).set(true);if(!chatOpen)setUnread(unreadCount+1);playMessageTone();}else if(m.deliveredTo?.[ACCOUNT_NAME])markStatus(key,"✓✓ تم الوصول");if(chatOpen&&m.who!==me)roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);});
   roomRef.child("chat").on("child_changed",snap=>{const m=snap.val()||{}, other=ACCOUNT_NAME==="amado"?"ekramo":"amado";if(m.readBy?.[other])markStatus(snap.key,"✓✓ تمت القراءة");else if(m.deliveredTo?.[other])markStatus(snap.key,"✓✓ تم الوصول");});
   roomRef.child("typing").on("value",snap=>{const t=snap.val()||{},other=t[ACCOUNT_NAME==="amado"?"ekramo":"amado"];typingIndicator.innerHTML=other?"<span class='typing-dots'>•••</span> يكتب الآن":"";});
 }
 function sendChat(){const input=document.getElementById("chatInput"),text=input.value.trim();if(!text)return;const payload={text,who:me,name:accountLabel(),at:Date.now(),status:"sent"};if(replyTo)payload.reply={name:replyTo.name,text:replyTo.text};if(connected)roomRef.child("chat").push(payload);else renderMsg(text,me,accountLabel(),payload.reply,"local","✓ تم الإرسال");input.value="";cancelReply();if(connected)roomRef.child("typing/"+ACCOUNT_NAME).remove();}
-document.getElementById("chatSend").addEventListener("click",sendChat);document.getElementById("chatInput").addEventListener("input",updateTyping);document.getElementById("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter")sendChat();});
+document.getElementById("chatSend").addEventListener("click",sendChat);document.getElementById("chatInput").addEventListener("input",updateTyping);document.getElementById("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendChat();}});
 
 </script>
 </body>
