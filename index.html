@@ -161,12 +161,21 @@
   .chat-head-actions{ display:flex; align-items:center; gap:5px; }
   .chat-tool{ border:0; background:transparent; color:#ffdede; cursor:pointer; font-size:15px; padding:4px; }
   .chat-tool:hover{ color:#fff; }
-  .emoji-picker{ display:none; position:absolute; bottom:58px; right:10px; width:190px; padding:9px; grid-template-columns:repeat(6,1fr); gap:5px; background:rgba(35,5,8,.98); border:1px solid var(--line); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.5); }
+  .emoji-picker{ display:none; position:absolute; bottom:58px; right:10px; width:190px; padding:9px; grid-template-columns:repeat(6,1fr); gap:5px; background:rgba(35,5,8,.98); border:1px solid var(--line); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.5); z-index:5; }
+  .sticker-picker{ display:none; position:absolute; bottom:58px; left:10px; width:220px; padding:10px; grid-template-columns:repeat(4,1fr); gap:7px; background:rgba(35,5,8,.98); border:1px solid var(--line); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.5); z-index:6; }
+  .sticker-picker.open{ display:grid; }
+  .sticker-choice{ border:1px solid rgba(255,180,180,.18); background:rgba(255,255,255,.06); border-radius:10px; padding:7px 2px; font-size:29px; cursor:pointer; transition:.15s ease; }
+  .sticker-choice:hover{ background:rgba(229,44,53,.4); transform:scale(1.05); }
+  .sticker-upload{ grid-column:1/-1; display:flex; align-items:center; justify-content:center; min-height:34px; border:1px dashed rgba(255,180,180,.4); border-radius:9px; color:#ffd0d0; font-size:11px; cursor:pointer; }
+  .sticker-upload:hover{ background:rgba(229,44,53,.25); }
   .emoji-picker.open{ display:grid; }
   .emoji-choice{ border:0; background:rgba(255,255,255,.06); color:#fff; border-radius:7px; padding:6px 2px; font-size:20px; cursor:pointer; }
   .emoji-choice:hover{ background:rgba(229,44,53,.45); }
   .msg-status{ display:block; margin-top:4px; font-size:9px; opacity:.78; text-align:right; }
   .msg-time{ display:block; margin-top:3px; font-size:9px; opacity:.6; text-align:right; }
+  .msg.sticker-msg{ padding:4px 7px; background:transparent; border:0; font-size:48px; line-height:1; box-shadow:none; }
+  .msg.sticker-msg .msg-name{ font-size:10px; margin-bottom:4px; color:#ffd0d0; }
+  .msg.sticker-msg .msg-time,.msg.sticker-msg .msg-status{ font-size:9px; color:#ffd0d0; }
   .msg-status.read{ color:#ffd1d1; }
   .chat-close{ width:32px; height:32px; display:grid; place-items:center; border:1px solid var(--line); border-radius:50%; background:rgba(229,44,53,.22); color:#fff; font-size:20px; line-height:1; cursor:pointer; }
   .chat-close:hover{ background:var(--red); }
@@ -260,12 +269,14 @@
 
   <div class="chat-panel" id="chatPanel">
     <div class="emoji-picker" id="emojiPicker">😊😂😍😘😢😡👍👏❤️🔥🎉🙏😎🤍💔🤣😉🤩😴🙌✨💯👀✅❌</div>
+    <div class="sticker-picker" id="stickerPicker" aria-label="لوحة الستيكرات"><label class="sticker-upload" for="stickerFile">＋ أضف صورة ستيكر</label><input id="stickerFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></div>
     <div class="chat-head"><div class="chat-head-info"><span>Our Chat</span><span class="chat-status" id="chatStatus">جاري الاتصال…</span></div><div class="chat-head-actions"><button class="chat-tool" id="muteChatBtn" title="كتم الرنة">🔔</button><button class="chat-tool" id="clearChatBtn" title="مسح المحادثة">🗑</button><button class="chat-close" id="chatClose" aria-label="Close chat">×</button></div></div>
     <div class="chat-body" id="chatBody"></div>
     <div class="typing-indicator" id="typingIndicator"></div>
     <div class="reply-bar" id="replyBar"><span id="replyText"></span><button class="reply-cancel" id="replyCancel" type="button">×</button></div>
     <div class="chat-foot">
       <button id="emojiBtn" type="button" title="إيموجي">☺</button>
+      <button id="stickerBtn" type="button" title="ستيكرات">🧸</button>
       <input type="text" id="chatInput" placeholder="اكتب رسالة…">
       <button id="chatSend">➜</button>
     </div>
@@ -651,6 +662,7 @@ function setChatOpen(open){
     placeChatNearFab(fabRect);
     chatFab.classList.add("hidden");
     setUnread(0);
+    chatSeenAt=Date.now(); localStorage.setItem("ourcinema_chat_seen_at",String(chatSeenAt));
     setTimeout(()=>{ markOpenMessagesRead(); document.getElementById("chatInput").focus(); }, 180);
   }else{
     chatFab.classList.remove("hidden");
@@ -708,14 +720,17 @@ window.addEventListener("pointerup",stopChatDrag);
 
 const chatBody=document.getElementById("chatBody"), unreadCountEl=document.getElementById("unreadCount"), typingIndicator=document.getElementById("typingIndicator"), replyBar=document.getElementById("replyBar"), replyTextEl=document.getElementById("replyText"), chatStatusEl=document.getElementById("chatStatus");
 let unreadCount=0, replyTo=null, typingTimer=null;
+let chatSeenAt=Number(localStorage.getItem("ourcinema_chat_seen_at")||0);
+if(!chatSeenAt) { chatSeenAt=Date.now(); localStorage.setItem("ourcinema_chat_seen_at",String(chatSeenAt)); }
 function accountLabel(){return ACCOUNT_NAME==="amado"?"عمادو":"إكرامو";}
 function setUnread(v){unreadCount=v; unreadCountEl.textContent=v>99?"99+":String(v); unreadCountEl.classList.toggle("show",v>0); chatDot.classList.toggle("show",v>0);}
 function chooseReply(m){replyTo={name:m.name||"",text:m.text||""}; replyTextEl.textContent="رد على "+replyTo.name+": "+replyTo.text; replyBar.classList.add("show"); document.getElementById("chatInput").focus();}
 function renderMsg(text,who,name,reply,key,status){
-  const d=document.createElement("div"), isAmado=name==="عمادو"||who==="amado"||(who===me&&ACCOUNT_NAME==="amado"); d.className="msg "+(isAmado?"amado":"ekramo"); d.dataset.key=key||""; d.dataset.who=who||"";
+  const d=document.createElement("div"), isAmado=name==="عمادو"||who==="amado"||(who===me&&ACCOUNT_NAME==="amado"); const isSticker=String(text||"").startsWith("__sticker__")||String(text||"").startsWith("__stickerimg__"); d.className="msg "+(isAmado?"amado":"ekramo")+(isSticker?" sticker-msg":""); d.dataset.key=key||""; d.dataset.who=who||"";
   if(reply?.text){const q=document.createElement("span");q.className="msg-reply";q.textContent="رد على "+(reply.name||"")+": "+reply.text;d.appendChild(q);}
   const label=document.createElement("span");label.className="msg-name";label.textContent=name||accountLabel();d.appendChild(label);
   const content=document.createElement("span");
+  if(isSticker){if(String(text).startsWith("__stickerimg__")){const img=document.createElement("img");img.src=String(text).replace("__stickerimg__","");img.alt="ستيكر";img.loading="lazy";img.style.cssText="display:block;max-width:150px;max-height:150px;border-radius:12px;object-fit:contain;";content.appendChild(img);}else content.textContent=String(text).replace("__sticker__","");d.appendChild(content);const time=document.createElement("small");time.className="msg-time";time.textContent=new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});d.appendChild(time);if(who===me){const st=document.createElement("span");st.className="msg-status";st.dataset.status="1";st.textContent=status||"✓ تم الإرسال";d.appendChild(st);}d.addEventListener("click",()=>chooseReply({name:name||accountLabel(),text:String(text).replace("__sticker__","")}));chatBody.appendChild(d);chatBody.scrollTop=chatBody.scrollHeight;return;}
   const parts=String(text||"").split(/(https?:\/\/[^\s]+)/g);
   parts.forEach(part=>{if(/^https?:\/\//i.test(part)){const a=document.createElement("a");a.href=part;a.target="_blank";a.rel="noopener noreferrer";a.textContent=part;a.style.color="#ffd1d1";content.appendChild(a);}else content.appendChild(document.createTextNode(part));});
   d.appendChild(content);
@@ -741,10 +756,22 @@ const emojiChars=["😊","😂","😍","😘","😢","😡","👍","👏","❤�
 emojiPicker.textContent="";
 emojiChars.forEach(ch=>{const b=document.createElement("button");b.type="button";b.className="emoji-choice";b.textContent=ch;b.addEventListener("click",()=>{const input=document.getElementById("chatInput");input.value+=ch;input.focus();emojiPicker.classList.remove("open");updateTyping();});emojiPicker.appendChild(b);});
 document.getElementById("emojiBtn").addEventListener("click",e=>{e.stopPropagation();emojiPicker.classList.toggle("open");});
-document.addEventListener("click",e=>{if(!emojiPicker.contains(e.target)&&e.target.id!=="emojiBtn")emojiPicker.classList.remove("open");});
+const stickerPicker=document.getElementById("stickerPicker");
+const stickerChars=["🧸","🥰","🤗","😻","🙈","🙉","🙊","🤝","👏","💖","💘","🌹","🍿","🎬","⭐","🔥","😂","😭","😡","🤍","✨","🎉","👍","🙏"];
+function sendSticker(sticker){const payload={text:"__sticker__"+sticker,who:me,name:accountLabel(),at:Date.now(),status:"sent"};if(connected)roomRef.child("chat").push(payload);else renderMsg(payload.text,me,accountLabel(),null,"local","✓ تم الإرسال");stickerPicker.classList.remove("open");emojiPicker.classList.remove("open");}
+stickerChars.forEach(ch=>{const b=document.createElement("button");b.type="button";b.className="sticker-choice";b.textContent=ch;b.addEventListener("click",()=>sendSticker(ch));stickerPicker.appendChild(b);});
+
+function sendImageSticker(file){
+  if(!file||!file.type.startsWith("image/")) return;
+  const reader=new FileReader();
+  reader.onload=()=>{const img=new Image();img.onload=()=>{const max=320, scale=Math.min(1,max/Math.max(img.width,img.height));const c=document.createElement("canvas");c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));c.getContext("2d").drawImage(img,0,0,c.width,c.height);const data=c.toDataURL("image/webp",.72);const payload={text:"__stickerimg__"+data,who:me,name:accountLabel(),at:Date.now(),status:"sent"};if(connected)roomRef.child("chat").push(payload);else renderMsg(payload.text,me,accountLabel(),null,"local","✓ تم الإرسال");stickerPicker.classList.remove("open");document.getElementById("stickerFile").value="";};img.src=reader.result;};reader.readAsDataURL(file);
+}
+document.getElementById("stickerFile").addEventListener("change",e=>sendImageSticker(e.target.files[0]));
+document.getElementById("stickerBtn").addEventListener("click",e=>{e.stopPropagation();stickerPicker.classList.toggle("open");emojiPicker.classList.remove("open");});
+document.addEventListener("click",e=>{if(!emojiPicker.contains(e.target)&&e.target.id!=="emojiBtn")emojiPicker.classList.remove("open");if(!stickerPicker.contains(e.target)&&e.target.id!=="stickerBtn")stickerPicker.classList.remove("open");});
 document.getElementById("clearChatBtn").addEventListener("click",()=>{if(window.confirm("هل تريد مسح كل رسائل المحادثة؟")){if(connected)roomRef.child("chat").remove().catch(err=>alert("تعذر المسح: "+err.message));chatBody.replaceChildren();setUnread(0);}});
 if(connected){
-  roomRef.child("chat").limitToLast(100).on("child_added",snap=>{const m=snap.val();if(!m)return;const key=snap.key;renderMsg(m.text,m.who,m.name,m.reply,key,m.status);if(m.who!==me){roomRef.child("chat/"+key+"/deliveredTo/"+ACCOUNT_NAME).set(true);if(!chatOpen){setUnread(unreadCount+1);playMessageTone();}else{roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);}}else if(m.deliveredTo?.[ACCOUNT_NAME])markStatus(key,"✓✓ تم الوصول");if(chatOpen&&m.who!==me)roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);});
+  roomRef.child("chat").limitToLast(100).on("child_added",snap=>{const m=snap.val();if(!m)return;const key=snap.key;renderMsg(m.text,m.who,m.name,m.reply,key,m.status);if(m.who!==me){roomRef.child("chat/"+key+"/deliveredTo/"+ACCOUNT_NAME).set(true);const isNew=Number(m.at||0)>chatSeenAt;if(!chatOpen&&isNew){setUnread(unreadCount+1);playMessageTone();}else if(chatOpen){roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);}}else if(m.deliveredTo?.[ACCOUNT_NAME])markStatus(key,"✓✓ تم الوصول");if(chatOpen&&m.who!==me)roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);});
   roomRef.child("chat").on("child_changed",snap=>{const m=snap.val()||{}, other=ACCOUNT_NAME==="amado"?"ekramo":"amado";if(m.readBy?.[other])markStatus(snap.key,"✓✓ تمت القراءة");else if(m.deliveredTo?.[other])markStatus(snap.key,"✓✓ تم الوصول");});
   roomRef.child("typing").on("value",snap=>{const t=snap.val()||{},other=t[ACCOUNT_NAME==="amado"?"ekramo":"amado"];typingIndicator.innerHTML=other?"<span class='typing-dots'>•••</span> يكتب الآن":"";});
 }
