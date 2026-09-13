@@ -166,6 +166,7 @@
   .sticker-picker.open{ display:grid; }
   .sticker-choice{ border:1px solid rgba(255,180,180,.18); background:rgba(255,255,255,.06); border-radius:10px; padding:7px 2px; font-size:29px; cursor:pointer; transition:.15s ease; }
   .sticker-choice:hover{ background:rgba(229,44,53,.4); transform:scale(1.05); }
+  .sticker-title{ grid-column:1/-1; color:#ffd0d0; font-size:11px; text-align:center; padding:2px 0 3px; }
   .sticker-upload{ grid-column:1/-1; display:flex; align-items:center; justify-content:center; min-height:34px; border:1px dashed rgba(255,180,180,.4); border-radius:9px; color:#ffd0d0; font-size:11px; cursor:pointer; }
   .sticker-upload:hover{ background:rgba(229,44,53,.25); }
   .emoji-picker.open{ display:grid; }
@@ -276,7 +277,7 @@
 
   <div class="chat-panel" id="chatPanel">
     <div class="emoji-picker" id="emojiPicker">😊😂😍😘😢😡👍👏❤️🔥🎉🙏😎🤍💔🤣😉🤩😴🙌✨💯👀✅❌</div>
-    <div class="sticker-picker" id="stickerPicker" aria-label="لوحة الستيكرات"><label class="sticker-upload" for="stickerFile">＋ أضف صورة ستيكر</label><input id="stickerFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></div>
+    <div class="sticker-picker" id="stickerPicker" aria-label="ستيكراتي"><div class="sticker-title">ستيكراتي</div><label class="sticker-upload" for="stickerFile">＋ أضف صورة ستيكر</label><input id="stickerFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></div>
     <div class="chat-head"><div class="chat-head-info"><span>Our Chat</span><span class="chat-status" id="chatStatus">جاري الاتصال…</span></div><div class="chat-head-actions"><button class="chat-tool" id="muteChatBtn" title="كتم الرنة">🔔</button><button class="chat-tool" id="clearChatBtn" title="مسح المحادثة">🗑</button><button class="chat-close" id="chatClose" aria-label="Close chat">×</button></div></div>
     <div class="chat-body" id="chatBody"></div>
     <div class="typing-indicator" id="typingIndicator"></div>
@@ -366,6 +367,25 @@ let mediaEl = null;       // current <video> or <iframe>
 let mediaType = null;     // "video" | "embed"
 let applyingRemote = false;
 let lastSentAt = 0;
+let syncSocket=null, syncReconnectTimer=null, syncReconnectAttempts=0;
+let syncUrl="", remoteSyncSuppressUntil=0;
+function configuredSyncUrl(){
+  const raw=window.OUR_CINEMA_VIDEO_SERVER_URL||localStorage.getItem("ourcinema_video_server_url")||"";
+  if(!raw) return "";
+  try{const u=new URL(raw);u.protocol=u.protocol==="https:"?"wss:":u.protocol==="http:"?"ws:":u.protocol;u.pathname="/sync";u.search="";u.hash="";return u.toString();}catch(e){return "";}
+}
+function connectPlaybackSync(){
+  syncUrl=configuredSyncUrl(); if(!syncUrl||syncSocket||!window.WebSocket) return;
+  try{
+    syncSocket=new WebSocket(syncUrl);
+    syncSocket.onopen=()=>{syncReconnectAttempts=0;console.info("Playback sync connected");};
+    syncSocket.onmessage=e=>{try{const m=JSON.parse(e.data);if(!mediaEl||mediaType!=="video"||!m||!["PLAY","PAUSE","SEEK"].includes(m.type)||!Number.isFinite(Number(m.currentTime)))return;applyingRemote=true;remoteSyncSuppressUntil=Date.now()+700;mediaEl.currentTime=Number(m.currentTime);if(m.type==="PLAY"){const r=mediaEl.play();if(r?.catch)r.catch(()=>{});}else if(m.type==="PAUSE")mediaEl.pause();setTimeout(()=>{applyingRemote=false;},80);}catch(err){console.warn("Playback sync message ignored",err);}};
+    syncSocket.onclose=()=>{syncSocket=null;if(syncReconnectAttempts<6){const delay=Math.min(10000,1000*Math.pow(2,syncReconnectAttempts++));clearTimeout(syncReconnectTimer);syncReconnectTimer=setTimeout(connectPlaybackSync,delay);}};
+    syncSocket.onerror=()=>{try{syncSocket.close();}catch(e){}};
+  }catch(e){syncSocket=null;}
+}
+function sendPlaybackEvent(type,currentTime){if(applyingRemote||Date.now()<remoteSyncSuppressUntil||!syncSocket||syncSocket.readyState!==WebSocket.OPEN)return;try{syncSocket.send(JSON.stringify({type,currentTime:Number(currentTime)||0}));}catch(e){}}
+connectPlaybackSync();
 
 function clearScreen(){
   screenEl.querySelectorAll("video,iframe,.empty-hint").forEach(el=>el.remove());
@@ -433,7 +453,10 @@ function loadEmbed(embedUrl, broadcast){
 }
 
 function bindVideoEvents(v){
-  // التشغيل محلي في كل جهاز، ولا تتم مزامنته حسب طلبك.
+  v.addEventListener("play",()=>sendPlaybackEvent("PLAY",v.currentTime));
+  v.addEventListener("pause",()=>sendPlaybackEvent("PAUSE",v.currentTime));
+  v.addEventListener("seeked",()=>sendPlaybackEvent("SEEK",v.currentTime));
+  v.addEventListener("loadedmetadata",()=>connectPlaybackSync());
 }
 
 function pushState(partial){
@@ -772,7 +795,10 @@ emojiPicker.textContent="";
 emojiChars.forEach(ch=>{const b=document.createElement("button");b.type="button";b.className="emoji-choice";b.textContent=ch;b.addEventListener("click",()=>{const input=document.getElementById("chatInput");input.value+=ch;input.focus();emojiPicker.classList.remove("open");updateTyping();});emojiPicker.appendChild(b);});
 document.getElementById("emojiBtn").addEventListener("click",e=>{e.stopPropagation();emojiPicker.classList.toggle("open");});
 const stickerPicker=document.getElementById("stickerPicker");
-let savedStickers=JSON.parse(localStorage.getItem("ourcinema_saved_stickers_"+ACCOUNT_NAME)||"[]");
+let savedStickers=[];
+try{savedStickers=JSON.parse(localStorage.getItem("ourcinema_saved_stickers_"+ACCOUNT_NAME)||"[]");}catch(e){savedStickers=[];}
+savedStickers=savedStickers.filter(src=>typeof src==="string"&&src.startsWith("data:image/"));
+localStorage.setItem("ourcinema_saved_stickers_"+ACCOUNT_NAME,JSON.stringify(savedStickers));
 function sendSticker(sticker){const payload={text:"__stickerimg__"+sticker,who:me,name:accountLabel(),at:Date.now(),status:"sent"};if(connected)roomRef.child("chat").push(payload);else renderMsg(payload.text,me,accountLabel(),null,"local","✓ تم الإرسال");stickerPicker.classList.remove("open");emojiPicker.classList.remove("open");}
 function renderSavedStickers(){stickerPicker.querySelectorAll(".saved-sticker").forEach(x=>x.remove());savedStickers.forEach(src=>{const b=document.createElement("button");b.type="button";b.className="sticker-choice saved-sticker";const img=document.createElement("img");img.src=src;img.alt="ستيكر محفوظ";img.style.cssText="width:44px;height:44px;object-fit:contain;border-radius:8px";b.appendChild(img);b.addEventListener("click",()=>sendSticker(src));stickerPicker.appendChild(b);});}
 
