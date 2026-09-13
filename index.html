@@ -757,7 +757,7 @@ emojiPicker.textContent="";
 emojiChars.forEach(ch=>{const b=document.createElement("button");b.type="button";b.className="emoji-choice";b.textContent=ch;b.addEventListener("click",()=>{const input=document.getElementById("chatInput");input.value+=ch;input.focus();emojiPicker.classList.remove("open");updateTyping();});emojiPicker.appendChild(b);});
 document.getElementById("emojiBtn").addEventListener("click",e=>{e.stopPropagation();emojiPicker.classList.toggle("open");});
 const stickerPicker=document.getElementById("stickerPicker");
-const stickerChars=["🧸","🥰","🤗","😻","🙈","🙉","🙊","🤝","👏","💖","💘","🌹","🍿","🎬","⭐","🔥","😂","😭","😡","🤍","✨","🎉","👍","🙏"];
+const stickerChars=[;
 function sendSticker(sticker){const payload={text:"__sticker__"+sticker,who:me,name:accountLabel(),at:Date.now(),status:"sent"};if(connected)roomRef.child("chat").push(payload);else renderMsg(payload.text,me,accountLabel(),null,"local","✓ تم الإرسال");stickerPicker.classList.remove("open");emojiPicker.classList.remove("open");}
 stickerChars.forEach(ch=>{const b=document.createElement("button");b.type="button";b.className="sticker-choice";b.textContent=ch;b.addEventListener("click",()=>sendSticker(ch));stickerPicker.appendChild(b);});
 
