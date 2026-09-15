@@ -784,6 +784,11 @@ function setReactionBadge(key,icon){
   const el=chatBody.querySelector('[data-key="'+key+'"] .reaction-badge');
   if(el){el.textContent=icon||'';el.classList.toggle('show',!!icon);}
 }
+function reactionFromMessage(m){
+  const reactions=m&&m.reactions||{};
+  const vals=Object.values(reactions).filter(Boolean);
+  return vals.length?vals[vals.length-1]:'';
+}
 function addReactionBar(messageEl,key){
   const wrap=document.createElement('span');wrap.className='reaction-wrap';
   const badge=document.createElement('span');badge.className='reaction-badge';wrap.appendChild(badge);
@@ -802,7 +807,7 @@ function addReactionBar(messageEl,key){
   messageEl.addEventListener('click',e=>{if(longPressed||e.target.closest('.reaction-bar')){e.stopPropagation();messageEl.dataset.reactionLong='1';longPressed=false;setTimeout(()=>delete messageEl.dataset.reactionLong,120);return;}closeBar();});
 }
 function renderMsg(text,who,name,reply,key,status){
-  const d=document.createElement("div"), isAmado=name==="عمادو"||who==="amado"||(who===me&&ACCOUNT_NAME==="amado"); const isSticker=String(text||"").startsWith("__sticker__")||String(text||"").startsWith("__stickerimg__"); d.className="msg "+(isAmado?"amado":"ekramo")+(isSticker?" sticker-msg":""); d.dataset.key=key||""; d.dataset.who=who||"";
+  const d=document.createElement("div"), isAmado=name==="عمادو"||who==="amado"||(who===me&&ACCOUNT_NAME==="amado")||(who!==me&&ACCOUNT_NAME!=="amado"); const isSticker=String(text||"").startsWith("__sticker__")||String(text||"").startsWith("__stickerimg__"); d.className="msg "+(isAmado?"amado":"ekramo")+(isSticker?" sticker-msg":""); d.dataset.key=key||""; d.dataset.who=who||"";
   if(reply?.text){const q=document.createElement("span");q.className="msg-reply";q.textContent="رد على "+(reply.name||"")+": "+reply.text;d.appendChild(q);}
   const label=document.createElement("span");label.className="msg-name";label.textContent=name||accountLabel();d.appendChild(label);
   const content=document.createElement("span");
@@ -851,8 +856,8 @@ document.getElementById("stickerBtn").addEventListener("click",e=>{e.stopPropaga
 document.addEventListener("click",e=>{if(!emojiPicker.contains(e.target)&&e.target.id!=="emojiBtn")emojiPicker.classList.remove("open");if(!stickerPicker.contains(e.target)&&e.target.id!=="stickerBtn")stickerPicker.classList.remove("open");});
 document.getElementById("clearChatBtn").addEventListener("click",()=>{if(window.confirm("هل تريد مسح كل رسائل المحادثة؟")){if(connected)roomRef.child("chat").remove().catch(err=>alert("تعذر المسح: "+err.message));chatBody.replaceChildren();setUnread(0);}});
 if(connected){
-  roomRef.child("chat").limitToLast(100).on("child_added",snap=>{const m=snap.val();if(!m)return;const key=snap.key;renderMsg(m.text,m.who,m.name,m.reply,key,m.status);if(m.reactions?.[ACCOUNT_NAME])setReactionBadge(key,m.reactions[ACCOUNT_NAME]);if(m.who!==me){roomRef.child("chat/"+key+"/deliveredTo/"+ACCOUNT_NAME).set(true);const isNew=Number(m.at||0)>chatSeenAt;if(!chatOpen&&isNew){setUnread(unreadCount+1);playMessageTone();}else if(chatOpen){roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);}}else if(m.deliveredTo?.[ACCOUNT_NAME])markStatus(key,"✓✓ تم الوصول");if(chatOpen&&m.who!==me)roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);});
-  roomRef.child("chat").on("child_changed",snap=>{const m=snap.val()||{}, other=ACCOUNT_NAME==="amado"?"ekramo":"amado";if(m.readBy?.[other])markStatus(snap.key,"✓✓ تمت القراءة");else if(m.deliveredTo?.[other])markStatus(snap.key,"✓✓ تم الوصول");if(m.reactions?.[ACCOUNT_NAME])setReactionBadge(snap.key,m.reactions[ACCOUNT_NAME]);});
+  roomRef.child("chat").limitToLast(100).on("child_added",snap=>{const m=snap.val();if(!m)return;const key=snap.key;renderMsg(m.text,m.who,m.name,m.reply,key,m.status);if(reactionFromMessage(m))setReactionBadge(key,reactionFromMessage(m));if(m.who!==me){roomRef.child("chat/"+key+"/deliveredTo/"+ACCOUNT_NAME).set(true);const isNew=Number(m.at||0)>chatSeenAt;if(!chatOpen&&isNew){setUnread(unreadCount+1);playMessageTone();}else if(chatOpen){roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);}}else if(m.deliveredTo?.[ACCOUNT_NAME])markStatus(key,"✓✓ تم الوصول");if(chatOpen&&m.who!==me)roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);});
+  roomRef.child("chat").on("child_changed",snap=>{const m=snap.val()||{}, other=ACCOUNT_NAME==="amado"?"ekramo":"amado";if(m.readBy?.[other])markStatus(snap.key,"✓✓ تمت القراءة");else if(m.deliveredTo?.[other])markStatus(snap.key,"✓✓ تم الوصول");if(reactionFromMessage(m))setReactionBadge(snap.key,reactionFromMessage(m));});
   roomRef.child("typing").on("value",snap=>{const t=snap.val()||{},other=t[ACCOUNT_NAME==="amado"?"ekramo":"amado"];typingIndicator.innerHTML=other?"<span class='typing-dots'>•••</span> يكتب الآن":"";});
 }
 function sendChat(){const input=document.getElementById("chatInput"),text=input.value.trim();if(!text)return;const payload={text,who:me,name:accountLabel(),at:Date.now(),status:"sent"};if(replyTo)payload.reply={name:replyTo.name,text:replyTo.text};if(connected)roomRef.child("chat").push(payload);else renderMsg(text,me,accountLabel(),payload.reply,"local","✓ تم الإرسال");input.value="";cancelReply();if(connected)roomRef.child("typing/"+ACCOUNT_NAME).remove();}
