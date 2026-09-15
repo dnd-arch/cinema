@@ -183,10 +183,11 @@
   .msg.sticker-msg .msg-name{ font-size:10px; margin-bottom:4px; color:#ffd0d0; }
   .msg.sticker-msg .msg-time,.msg.sticker-msg .msg-status{ font-size:9px; color:#ffd0d0; }
   .msg-status.read{ color:#ffd1d1; }
-  .reaction-wrap{ position:relative; display:flex; align-items:center; gap:4px; max-width:100%; }
-  .reaction-trigger{ width:22px; height:22px; flex:0 0 22px; border:1px solid rgba(255,190,190,.28); background:rgba(35,5,8,.9); color:#ffd0d0; border-radius:50%; font-size:16px; line-height:18px; cursor:pointer; opacity:.7; transition:.15s ease; }
-  .reaction-trigger:hover,.reaction-trigger.open{ opacity:1; background:rgba(229,44,53,.45); transform:scale(1.08); }
-  .reaction-bar{ display:none; position:absolute; z-index:20; bottom:calc(100% + 5px); left:0; gap:3px; padding:5px; border:1px solid rgba(255,190,190,.28); background:rgba(35,5,8,.98); border-radius:99px; box-shadow:0 8px 20px rgba(0,0,0,.45); }
+  .reaction-wrap{ position:absolute; left:7px; bottom:5px; display:block; max-width:100%; }
+  .reaction-trigger{ display:none; }
+  .reaction-badge{ display:none; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 4px; border-radius:99px; background:#fff; color:#8f0b14; border:2px solid #8f0b14; font-size:11px; line-height:1; box-shadow:0 2px 7px #0008; }
+  .reaction-badge.show{ display:flex; }
+  .reaction-bar{ display:none; position:absolute; z-index:20; bottom:calc(100% + 7px); left:0; gap:3px; padding:5px; border:1px solid rgba(255,190,190,.28); background:rgba(35,5,8,.98); border-radius:99px; box-shadow:0 8px 20px rgba(0,0,0,.45); }
   .reaction-bar.open{ display:flex; }
   .reaction-bar button{ border:1px solid rgba(255,190,190,.2); background:rgba(0,0,0,.18); border-radius:99px; padding:3px 5px; font-size:14px; line-height:1; cursor:pointer; transition:.15s ease; }
   .reaction-bar button:hover,.reaction-bar button.selected{ background:rgba(229,44,53,.45); transform:scale(1.12); }
@@ -778,26 +779,40 @@ if(!chatSeenAt) { chatSeenAt=Date.now(); localStorage.setItem("ourcinema_chat_se
 function accountLabel(){return ACCOUNT_NAME==="amado"?"عمادو":"إكرامو";}
 function setUnread(v){unreadCount=v; unreadCountEl.textContent=v>99?"99+":String(v); unreadCountEl.classList.toggle("show",v>0); chatDot.classList.toggle("show",v>0);}
 function chooseReply(m){replyTo={name:m.name||"",text:m.text||""}; replyTextEl.textContent="رد على "+replyTo.name+": "+replyTo.text; replyBar.classList.add("show"); document.getElementById("chatInput").focus();}
+function setReactionBadge(key,icon){
+  if(!key||key==='local') return;
+  const el=chatBody.querySelector('[data-key="'+key+'"] .reaction-badge');
+  if(el){el.textContent=icon||'';el.classList.toggle('show',!!icon);}
+}
 function addReactionBar(messageEl,key){
-  const wrap=document.createElement("span");wrap.className="reaction-wrap";
-  const trigger=document.createElement("button");trigger.type="button";trigger.className="reaction-trigger";trigger.textContent="+";trigger.title="إضافة تفاعل";
-  const bar=document.createElement("span");bar.className="reaction-bar";
-  trigger.addEventListener("click",e=>{e.stopPropagation();bar.classList.toggle("open");trigger.classList.toggle("open",bar.classList.contains("open"));});
-  ["❤️","😂","👍","😮","😢","🔥"].forEach(icon=>{const b=document.createElement("button");b.type="button";b.textContent=icon;b.title="تفاعل "+icon;b.addEventListener("click",e=>{e.stopPropagation();const ref=connected&&key&&key!=="local"?roomRef.child("chat/"+key+"/reactions/"+ACCOUNT_NAME):null;if(ref)ref.set(icon);b.classList.add("selected");bar.classList.remove("open");trigger.classList.remove("open");});bar.appendChild(b);});
-  wrap.appendChild(trigger);wrap.appendChild(bar);messageEl.appendChild(wrap);
+  const wrap=document.createElement('span');wrap.className='reaction-wrap';
+  const badge=document.createElement('span');badge.className='reaction-badge';wrap.appendChild(badge);
+  const bar=document.createElement('span');bar.className='reaction-bar';
+  let pressTimer=null, longPressed=false;
+  const closeBar=()=>{bar.classList.remove('open');};
+  const beginPress=()=>{longPressed=false;clearTimeout(pressTimer);pressTimer=setTimeout(()=>{longPressed=true;bar.classList.add('open');},520);};
+  const endPress=()=>{clearTimeout(pressTimer);};
+  messageEl.addEventListener('pointerdown',beginPress);
+  messageEl.addEventListener('pointerup',endPress);
+  messageEl.addEventListener('pointercancel',endPress);
+  messageEl.addEventListener('pointerleave',endPress);
+  messageEl.addEventListener('contextmenu',e=>e.preventDefault());
+  ['❤️','😂','👍','😮','😢','🔥'].forEach(icon=>{const b=document.createElement('button');b.type='button';b.textContent=icon;b.title='تفاعل '+icon;b.addEventListener('click',e=>{e.stopPropagation();const ref=connected&&key&&key!=='local'?roomRef.child('chat/'+key+'/reactions/'+ACCOUNT_NAME):null;if(ref)ref.set(icon);badge.textContent=icon;badge.classList.add('show');closeBar();});bar.appendChild(b);});
+  wrap.appendChild(bar);messageEl.appendChild(wrap);
+  messageEl.addEventListener('click',e=>{if(longPressed||e.target.closest('.reaction-bar')){e.stopPropagation();messageEl.dataset.reactionLong='1';longPressed=false;setTimeout(()=>delete messageEl.dataset.reactionLong,120);return;}closeBar();});
 }
 function renderMsg(text,who,name,reply,key,status){
   const d=document.createElement("div"), isAmado=name==="عمادو"||who==="amado"||(who===me&&ACCOUNT_NAME==="amado"); const isSticker=String(text||"").startsWith("__sticker__")||String(text||"").startsWith("__stickerimg__"); d.className="msg "+(isAmado?"amado":"ekramo")+(isSticker?" sticker-msg":""); d.dataset.key=key||""; d.dataset.who=who||"";
   if(reply?.text){const q=document.createElement("span");q.className="msg-reply";q.textContent="رد على "+(reply.name||"")+": "+reply.text;d.appendChild(q);}
   const label=document.createElement("span");label.className="msg-name";label.textContent=name||accountLabel();d.appendChild(label);
   const content=document.createElement("span");
-  if(isSticker){if(String(text).startsWith("__stickerimg__")){const img=document.createElement("img");img.src=String(text).replace("__stickerimg__","");img.alt="ستيكر";img.loading="lazy";img.style.cssText="display:block;max-width:150px;max-height:150px;border-radius:12px;object-fit:contain;";content.appendChild(img);}else content.textContent=String(text).replace("__sticker__","");d.appendChild(content);const time=document.createElement("small");time.className="msg-time";time.textContent=new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});d.appendChild(time);if(who===me){const st=document.createElement("span");st.className="msg-status";st.dataset.status="1";st.textContent=status||"✓ تم الإرسال";d.appendChild(st);}addReactionBar(d,key||"local");d.addEventListener("click",e=>{if(!e.target.closest(".reaction-bar"))chooseReply({name:name||accountLabel(),text:String(text).replace("__stickerimg__","")});});chatBody.appendChild(d);chatBody.scrollTop=chatBody.scrollHeight;return;}
+  if(isSticker){if(String(text).startsWith("__stickerimg__")){const img=document.createElement("img");img.src=String(text).replace("__stickerimg__","");img.alt="ستيكر";img.loading="lazy";img.style.cssText="display:block;max-width:150px;max-height:150px;border-radius:12px;object-fit:contain;";content.appendChild(img);}else content.textContent=String(text).replace("__sticker__","");d.appendChild(content);const time=document.createElement("small");time.className="msg-time";time.textContent=new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});d.appendChild(time);if(who===me){const st=document.createElement("span");st.className="msg-status";st.dataset.status="1";st.textContent=status||"✓ تم الإرسال";d.appendChild(st);}addReactionBar(d,key||"local");d.addEventListener("click",e=>{if(!e.target.closest(".reaction-bar")&&!d.dataset.reactionLong)chooseReply({name:name||accountLabel(),text:String(text).replace("__stickerimg__","")});});chatBody.appendChild(d);chatBody.scrollTop=chatBody.scrollHeight;return;}
   const parts=String(text||"").split(/(https?:\/\/[^\s]+)/g);
   parts.forEach(part=>{if(/^https?:\/\//i.test(part)){const a=document.createElement("a");a.href=part;a.target="_blank";a.rel="noopener noreferrer";a.textContent=part;a.style.color="#ffd1d1";content.appendChild(a);}else content.appendChild(document.createTextNode(part));});
   d.appendChild(content);
   const time=document.createElement("small");time.className="msg-time";time.textContent=new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});d.appendChild(time);
   if(who===me){const st=document.createElement("span");st.className="msg-status";st.dataset.status="1";st.textContent=status||"✓ تم الإرسال";d.appendChild(st);}
-  addReactionBar(d,key||"local");d.addEventListener("click",e=>{if(!e.target.closest(".reaction-bar"))chooseReply({name:name||accountLabel(),text});});chatBody.appendChild(d);chatBody.scrollTop=chatBody.scrollHeight;
+  addReactionBar(d,key||"local");d.addEventListener("click",e=>{if(!e.target.closest(".reaction-bar")&&!d.dataset.reactionLong)chooseReply({name:name||accountLabel(),text});});chatBody.appendChild(d);chatBody.scrollTop=chatBody.scrollHeight;
 }
 function markStatus(key,text){const el=chatBody.querySelector('[data-key="'+key+'"] .msg-status');if(el){el.textContent=text;el.classList.toggle("read",text.includes("قرأت"));}}
 function markOpenMessagesRead(){
@@ -836,8 +851,8 @@ document.getElementById("stickerBtn").addEventListener("click",e=>{e.stopPropaga
 document.addEventListener("click",e=>{if(!emojiPicker.contains(e.target)&&e.target.id!=="emojiBtn")emojiPicker.classList.remove("open");if(!stickerPicker.contains(e.target)&&e.target.id!=="stickerBtn")stickerPicker.classList.remove("open");});
 document.getElementById("clearChatBtn").addEventListener("click",()=>{if(window.confirm("هل تريد مسح كل رسائل المحادثة؟")){if(connected)roomRef.child("chat").remove().catch(err=>alert("تعذر المسح: "+err.message));chatBody.replaceChildren();setUnread(0);}});
 if(connected){
-  roomRef.child("chat").limitToLast(100).on("child_added",snap=>{const m=snap.val();if(!m)return;const key=snap.key;renderMsg(m.text,m.who,m.name,m.reply,key,m.status);if(m.who!==me){roomRef.child("chat/"+key+"/deliveredTo/"+ACCOUNT_NAME).set(true);const isNew=Number(m.at||0)>chatSeenAt;if(!chatOpen&&isNew){setUnread(unreadCount+1);playMessageTone();}else if(chatOpen){roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);}}else if(m.deliveredTo?.[ACCOUNT_NAME])markStatus(key,"✓✓ تم الوصول");if(chatOpen&&m.who!==me)roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);});
-  roomRef.child("chat").on("child_changed",snap=>{const m=snap.val()||{}, other=ACCOUNT_NAME==="amado"?"ekramo":"amado";if(m.readBy?.[other])markStatus(snap.key,"✓✓ تمت القراءة");else if(m.deliveredTo?.[other])markStatus(snap.key,"✓✓ تم الوصول");});
+  roomRef.child("chat").limitToLast(100).on("child_added",snap=>{const m=snap.val();if(!m)return;const key=snap.key;renderMsg(m.text,m.who,m.name,m.reply,key,m.status);if(m.reactions?.[ACCOUNT_NAME])setReactionBadge(key,m.reactions[ACCOUNT_NAME]);if(m.who!==me){roomRef.child("chat/"+key+"/deliveredTo/"+ACCOUNT_NAME).set(true);const isNew=Number(m.at||0)>chatSeenAt;if(!chatOpen&&isNew){setUnread(unreadCount+1);playMessageTone();}else if(chatOpen){roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);}}else if(m.deliveredTo?.[ACCOUNT_NAME])markStatus(key,"✓✓ تم الوصول");if(chatOpen&&m.who!==me)roomRef.child("chat/"+key+"/readBy/"+ACCOUNT_NAME).set(true);});
+  roomRef.child("chat").on("child_changed",snap=>{const m=snap.val()||{}, other=ACCOUNT_NAME==="amado"?"ekramo":"amado";if(m.readBy?.[other])markStatus(snap.key,"✓✓ تمت القراءة");else if(m.deliveredTo?.[other])markStatus(snap.key,"✓✓ تم الوصول");if(m.reactions?.[ACCOUNT_NAME])setReactionBadge(snap.key,m.reactions[ACCOUNT_NAME]);});
   roomRef.child("typing").on("value",snap=>{const t=snap.val()||{},other=t[ACCOUNT_NAME==="amado"?"ekramo":"amado"];typingIndicator.innerHTML=other?"<span class='typing-dots'>•••</span> يكتب الآن":"";});
 }
 function sendChat(){const input=document.getElementById("chatInput"),text=input.value.trim();if(!text)return;const payload={text,who:me,name:accountLabel(),at:Date.now(),status:"sent"};if(replyTo)payload.reply={name:replyTo.name,text:replyTo.text};if(connected)roomRef.child("chat").push(payload);else renderMsg(text,me,accountLabel(),payload.reply,"local","✓ تم الإرسال");input.value="";cancelReply();if(connected)roomRef.child("typing/"+ACCOUNT_NAME).remove();}
