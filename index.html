@@ -906,9 +906,9 @@ document.getElementById("chatSend").addEventListener("click",sendChat);document.
         if(m.completed){
           const layer=document.createElement('div'); layer.className='movie-completed-layer';
           layer.innerHTML='<div>اكتملت المشاهدة</div><div class="poster-rating-right">عمادو: '+(m.ratings?.amado||'—')+'/10</div><div class="poster-rating-left">إكرامو: '+(m.ratings?.ekramo||'—')+'/10</div>';
-          const input=document.createElement('input'); input.className='poster-rating-input'; input.type='number'; input.min='1'; input.max='10'; input.step='1'; input.value=m.ratings?.[ACCOUNT_NAME]||''; input.placeholder='تقييمك /10';
+          const input=document.createElement('input'); input.className='poster-rating-input'; input.type='number'; input.min='1'; input.max='10'; input.step='0.1'; input.value=m.ratings?.[ACCOUNT_NAME]||''; input.placeholder='تقييمك /10';
           const save=document.createElement('button'); save.className='poster-rating-save'; save.type='button'; save.textContent='حفظ التقييم';
-          const saveRating=()=>{const n=Number(input.value);if(Number.isInteger(n)&&n>=1&&n<=10)moviesRef().child(key+'/ratings/'+ACCOUNT_NAME).set(n);else alert('اكتب رقمًا من 1 إلى 10.');}; save.onclick=saveRating; input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();saveRating();}};
+          const saveRating=()=>{const n=Number(input.value);if(Number.isFinite(n)&&n>=1&&n<=10&&Math.round(n*10)===n*10)moviesRef().child(key+'/ratings/'+ACCOUNT_NAME).set(Math.round(n*10)/10);else alert('اكتب رقمًا من 1 إلى 10، ويمكن استخدام منزلة عشرية مثل 7.6.');}; save.onclick=saveRating; input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();saveRating();}};
           layer.append(input,save); wrap.appendChild(layer);
         }
         const info=document.createElement('div'); info.className='movie-info';
